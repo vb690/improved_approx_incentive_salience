@@ -1,1 +1,1 @@
-# improved_approx_incentive_salience
+# Improving Incentive Salience Approximation
