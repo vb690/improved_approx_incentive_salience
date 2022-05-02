@@ -4,15 +4,16 @@ import tensorflow.keras.backend as K
 
 
 def mae_np(y_true, y_pred, axis=None):
-    """Function for computing the Mean Absolute Error (MAE)
-    given numpy array:
+    """Short summary.
 
     Args:
-        - y_true: a numpy array, is the collection of ground truth values
-        - y_pred: a numpy array, is the collection of predicted values
+        y_true (type): Description of parameter `y_true`.
+        y_pred (type): Description of parameter `y_pred`.
+        axis (type): Description of parameter `axis`.
 
     Returns:
-        - mean_absolute_eror: is a float, the MAE between y_true and y_pred
+        type: Description of returned object.
+
     """
     absolute_error = np.abs(y_true - y_pred)
     mean_absolute_eror = np.nanmean(absolute_error, axis=axis)
@@ -20,32 +21,34 @@ def mae_np(y_true, y_pred, axis=None):
 
 
 def r2_np(y_true, y_pred, axis=None):
-    """Function for computing the cofficient of determination r2
-    given numpy array:
+    """Short summary.
 
     Args:
-        - y_true: a numpy array, is the collection of ground truth values
-        - y_pred: a numpy array, is the collection of predicted values
+        y_true (type): Description of parameter `y_true`.
+        y_pred (type): Description of parameter `y_pred`.
+        axis (type): Description of parameter `axis`.
 
     Returns:
-        - mean_absolute_eror: is a float, the r2 between y_true and y_pred
+        type: Description of returned object.
+
     """
-    ssres = np.sum((y_true - y_pred)**2, axis=axis)
-    sstot = np.sum((y_true - y_true.mean(axis=0))**2, axis=axis)
+    ssres = np.sum((y_true - y_pred) ** 2, axis=axis)
+    sstot = np.sum((y_true - y_true.mean(axis=0)) ** 2, axis=axis)
     r2 = 1 - (ssres / (sstot + 1e-10))
     return r2
 
 
 def smape_np(y_true, y_pred, axis=None):
-    """Function for computing the Simmetric Mean Absolute Error (SMAPE)
-    given numpy array:
+    """Short summary.
 
     Args:
-        - y_true: a numpy array, is the collection of ground truth values
-        - y_pred: a numpy array, is the collection of predicted values
+        y_true (type): Description of parameter `y_true`.
+        y_pred (type): Description of parameter `y_pred`.
+        axis (type): Description of parameter `axis`.
 
     Returns:
-        - division: is a float, the SMAPE between y_true and y_pred
+        type: Description of returned object.
+
     """
     nominator = np.abs(y_true - y_pred)
     denominator = (np.abs(y_true) + np.abs(y_pred)) + 1e-07
@@ -54,18 +57,18 @@ def smape_np(y_true, y_pred, axis=None):
 
 
 def smape_k(y_true, y_pred):
-    """Function for computing the Simmetric Mean Absolute Error (SMAPE)
-    given keras tensors:
+    """Short summary.
 
     Args:
-        - y_true: a keras tensor, is the collection of ground truth values
-        - y_pred: a keras tensor, is the collection of predicted values
+        y_true (type): Description of parameter `y_true`.
+        y_pred (type): Description of parameter `y_pred`.
 
     Returns:
-        - division: is a float, the SMAPE between y_true and y_pred
+        type: Description of returned object.
+
     """
-    y_true = K.cast(y_true, 'float32')
+    y_true = K.cast(y_true, "float32")
     nominator = K.abs(y_true - y_pred)
-    denominator = (K.abs(y_true) + K.abs(y_pred) + K.epsilon())
+    denominator = K.abs(y_true) + K.abs(y_pred) + K.epsilon()
     division = K.mean(nominator / denominator, axis=-1)
     return division
