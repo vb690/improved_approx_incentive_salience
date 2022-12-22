@@ -2,6 +2,8 @@ from IPython.display import display
 
 from itertools import combinations
 
+from patsy import dmatrix
+
 import numpy as np
 
 import pymc3 as pm
@@ -11,200 +13,117 @@ import seaborn as sns
 
 
 class LMMPerformance:
-    """Class for assessing perfromance difference using
+    """Class for assessing perforrmance difference using
     a Linear Mixed Effect Model
     """
-
-    def __init__(
-        self,
-        df,
-        models_column,
-        contexts_column,
-        time_column,
-        fold_column,
-        targets_column,
-        outcomes_column,
-        robust=False,
-    ):
-        """Short summary.
-
-        Args:
-            df (type): Description of parameter `df`.
-            models_column (type): Description of parameter `models_column`.
-            contexts_column (type): Description of parameter `contexts_column`.
-            time_column (type): Description of parameter `time_column`.
-            fold_column (type): Description of parameter `fold_column`.
-            targets_column (type): Description of parameter `targets_column`.
-            outcomes_column (type): Description of parameter `outcomes_column`.
-            robust (type): Description of parameter `robust`.
-
-        Returns:
-            type: Description of returned object.
-
+    def __init__(self, df, models_column, contexts_column, time_column,
+                 outcomes_column, targets_column=None,
+                 robust=False):
+        """
         """
         self.df = df
         self.models_column = models_column
         self.contexts_column = contexts_column
         self.time_column = time_column
-        self.fold_column = fold_column
         self.targets_column = targets_column
         self.outcomes_column = outcomes_column
         self.robust = robust
 
     def __define_data(self, target):
-        """Short summary.
-
-        Args:
-            target (type): Description of parameter `target`.
-
-        Returns:
-            type: Description of returned object.
-
         """
-        data = self.df[self.df[self.targets_column] == target]
+        """
+        if self.targets_column is not None:
+            data = self.df[self.df[self.targets_column] == target]
+        else:
+            data = self.df
 
         unique_contexts = data[self.contexts_column].unique()
         unique_models = data[self.models_column].unique()
         unique_times = data[self.time_column].unique()
-        unique_folds = data[self.fold_column].unique()
 
-        contexts = (
-            data[self.contexts_column]
-            .map({value: code for code, value in enumerate(unique_contexts)})
-            .values
+        contexts = data[self.contexts_column].map(
+            {value: code for code, value in enumerate(unique_contexts)}
+        ).values
+        models = data[self.models_column].map(
+            {value: code for code, value in enumerate(unique_models)}
+        ).values
+        times = data[self.time_column]
+        times_matrix = np.array(
+            dmatrix(
+                "bs(x, df=6, degree=3, include_intercept=True) - 1",
+                {"x": np.arange(data[self.time_column].max() + 1)}
+            )
         )
-        models = (
-            data[self.models_column]
-            .map({value: code for code, value in enumerate(unique_models)})
-            .values
-        )
-        times = (
-            data[self.time_column]
-            .map({value: code for code, value in enumerate(unique_times)})
-            .values
-        )
-        folds = (
-            data[self.fold_column]
-            .map({value: code for code, value in enumerate(unique_folds)})
-            .values
-        )
+
         outcomes = data[self.outcomes_column].values
 
-        return (
-            unique_models,
-            unique_contexts,
-            unique_times,
-            unique_folds,
-            models,
-            contexts,
-            times,
-            folds,
-            outcomes,
-        )
+        return unique_models, unique_contexts, unique_times, \
+            models, contexts, times, times_matrix, outcomes
 
-    def __build(
-        self,
-        target,
-        priors={
-            "Hyper Mu Context": {"mu": 0, "sigma": 0.1},
-            "Hyper Sigma Context": {"sigma": 0.5},
-            "Hyper Mu Time": {"mu": 0, "sigma": 0.1},
-            "Hyper Sigma Time": {"sigma": 0.5},
-            "Hyper Mu Folds": {"mu": 0, "sigma": 0.1},
-            "Hyper Sigma Folds": {"sigma": 0.5},
-            "Mu Slope": {"mu": 0, "sigma": 0.1},
-            "Sigma": {"sigma": 0.5},
-        },
-    ):
-        """Short summary.
+    def __build(self, target, priors={
+                    "Hyper Mu Time": {"mu": 0, "sigma": 1},
+                    "Hyper Sigma Time": {"beta": 1},
 
-        Args:
-            target (type): Description of parameter `target`.
-            priors (type): Description of parameter `priors`.
-
-        Returns:
-            type: Description of returned object.
-
+                    "Mu Slope": {"mu": 0, "sigma": 1},
+                    "Sigma": {"beta": 1}
+                    }
+                ):
         """
-        (
-            unique_models,
-            unique_contexts,
-            unique_times,
-            unique_folds,
-            models,
-            contexts,
-            times,
-            folds,
-            outcomes,
-        ) = self.__define_data(target=target)
+        """
+        unique_models, unique_contexts, unique_times, \
+            models, contexts, times, times_matrix, outcomes = self.__define_data(target=target)
         coords = {
             "Models": unique_models,
-            "Contexts": unique_contexts,
-            "Times": unique_times,
-            "Folds": unique_folds,
-            "Outcomes": np.arange(outcomes.size),
+            "Outcomes": np.arange(outcomes.size)
         }
         with pm.Model(coords=coords) as model:
-            contexts_idx = pm.Data("contexts_idx", contexts, dims="Outcomes")
-            times_idx = pm.Data("times_idx", times, dims="Outcomes")
-            folds_idx = pm.Data("folds_idx", folds, dims="Outcomes")
-            models_idx = pm.Data("models_idx", models, dims="Outcomes")
+            models_idx = pm.Data(
+                "models_idx",
+                models,
+                dims="Outcomes"
+            )
+            times_matrix_data = pm.Data(
+                "b_spline_matrix_6_dof",
+                times_matrix
+            )
 
             # hyper priors
-            hyper_mu_context = pm.Normal(
-                name="Hyper Mu Context",
-                mu=priors["Hyper Mu Context"]["mu"],
-                sd=priors["Hyper Mu Context"]["sigma"],
-            )
-            hyper_sigma_context = pm.HalfNormal(
-                name="Hyper Sigma Context",
-                beta=priors["Hyper Sigma Context"]["sigma"],
-            )
-            hyper_mu_time = pm.Normal(
-                name="Hyper Mu Time",
+            hyper_mu_time_context = pm.Normal(
+                name="Hyper Mu Time Context",
                 mu=priors["Hyper Mu Time"]["mu"],
-                sd=priors["Hyper Mu Time"]["sigma"],
+                sd=priors["Hyper Mu Time"]["sigma"]
             )
-            hyper_sigma_time = pm.HalfNormal(
-                name="Hyper Sigma Time",
-                beta=priors["Hyper Sigma Time"]["sigma"],
+            hyper_sigma_time_context = pm.HalfCauchy(
+                name="Hyper Sigma Time Context",
+                beta=priors["Hyper Sigma Time"]["beta"]
             )
-            hyper_mu_folds = pm.Normal(
-                name="Hyper Mu Fold",
-                mu=priors["Hyper Mu Folds"]["mu"],
-                sd=priors["Hyper Mu Folds"]["sigma"],
-            )
-            hyper_sigma_folds = pm.HalfNormal(
-                name="Hyper Sigma Fold",
-                beta=priors["Hyper Sigma Folds"]["sigma"],
+            coef_time_context = pm.Normal(
+                name="Coef Time Context",
+                mu=hyper_mu_time_context,
+                sd=hyper_sigma_time_context,
+                shape=(6, 6)
             )
 
-            varying_intercept_context = pm.Normal(
-                name="Varying Intercept Context",
-                mu=hyper_mu_context,
-                sd=hyper_sigma_context,
-                dims="Contexts",
-            )
+            for idx, context in enumerate(unique_contexts):
 
-            varying_intercept_time = pm.Normal(
-                name="Varying Intercept Time",
-                mu=hyper_mu_time,
-                sd=hyper_sigma_time,
-                dims="Times",
-            )
+                unique_times_context = np.unique(
+                    self.df[self.df[self.contexts_column] == context][self.time_column].values
+                )
+                pm.Deterministic(
+                    f"Varying Intercept Context {context}",
+                    pm.math.dot(
+                        times_matrix_data[unique_times_context, :],
+                        coef_time_context[:, idx]
+                    )
+                )
 
-            varying_intercept_fold = pm.Normal(
-                name="Varying Intercept Fold",
-                mu=hyper_mu_folds,
-                sd=hyper_sigma_folds,
-                dims="Folds",
+            varying_intercept_time_comp = pm.math.dot(
+                times_matrix_data,
+                coef_time_context
             )
-
             intercept = pm.Deterministic(
-                "Intercept = Time + Context",
-                varying_intercept_context[contexts_idx]
-                + varying_intercept_time[times_idx]
-                + varying_intercept_fold[folds_idx],
+                "Varying Intercept Time Context",
+                varying_intercept_time_comp[times, contexts]
             )
 
             # define the slope
@@ -212,50 +131,51 @@ class LMMPerformance:
                 name="Model Slope",
                 mu=priors["Mu Slope"]["mu"],
                 sd=priors["Mu Slope"]["sigma"],
-                dims="Models",
+                dims="Models"
             )
 
-            # build the beta model
+            # build Student T model
             mu = pm.Deterministic(
                 "Mu",
-                pm.math.invlogit(
-                    intercept + model_slope[models_idx],
-                ),
+                intercept + model_slope[models_idx]
             )
-            sigma = pm.HalfNormal(name="Sigma", beta=priors["Sigma"]["sigma"])
+            sigma = pm.HalfCauchy(
+                name="Sigma",
+                beta=priors["Sigma"]["beta"]
+            )
 
             if self.robust:
-                nu = pm.InverseGamma("Nu", alpha=1, beta=1)
+                nu = pm.Gamma("Nu", alpha=2, beta=0.1)
                 out = pm.StudentT(
                     name=f"Observed SMAPE",
                     mu=mu,
                     sigma=sigma,
                     nu=nu,
-                    observed=outcomes,
+                    observed=outcomes
                 )
             else:
                 out = pm.Normal(
                     name=f"Observed SMAPE",
                     mu=mu,
                     sigma=sigma,
-                    observed=outcomes,
+                    observed=outcomes
                 )
-        plate = pm.model_graph.model_to_graphviz(model)
+        plate = pm.model_graph.model_to_graphviz(
+            model
+        )
         display(plate)
         setattr(self, "model", model)
         setattr(self, "plate", plate)
 
     def comparison(self, target):
-        """Short summary.
-
-        Args:
-            target (type): Description of parameter `target`.
-
-        Returns:
-            type: Description of returned object.
-
         """
-        data = self.df[self.df[self.targets_column] == target.replace("_", " ")]
+        """
+        if self.targets_column is not None:
+            data = self.df[
+                self.df[self.targets_column] == target.replace("_", " ")
+            ]
+        else:
+            data = self.df
 
         unique_models = data[self.models_column].unique()
         code_to_model = {
@@ -270,88 +190,113 @@ class LMMPerformance:
         axs = axs.flatten()
         for index, comp in enumerate(comparisons):
 
-            delta = model_trace[:, comp[0]] - model_trace[:, comp[1]]
+            delta = \
+                model_trace[:, comp[0]] - model_trace[:, comp[1]]
 
-            sns.kdeplot(delta, ax=axs[index])
-
+            sns.kdeplot(
+                delta,
+                ax=axs[index]
+            )
+            axs[index].axvline(0, linestyle=":", color="r")
+            axs[index].axvline(-.1, linestyle=":", color="k")
+            axs[index].axvline(.1, linestyle=":", color="k")
             axs[index].set_title(
                 f"{code_to_model[comp[0]]} - {code_to_model[comp[1]]}"
             )
             axs[index].set_ylabel("")
 
         plt.tight_layout()
-        fig.text(0.5, -0.01, "Difference in SMAPE", ha="center")
-        fig.text(-0.01, 0.5, "Density", va="center", rotation="vertical")
+        fig.text(
+            0.5,
+            -0.01,
+            "Difference in SMAPE",
+            ha="center"
+        )
+        fig.text(
+            -0.01,
+            0.5,
+            "Density",
+            va="center",
+            rotation="vertical"
+        )
+        plt.savefig(f"results\\figures\\models_performance\\bayes\\{target}_comp_3.png", dpi=300)
         plt.show()
 
         return None
 
-    def analyze(self, targets, figsize=(5, 5), **kwargs):
-        """Short summary.
-
-        Args:
-            targets (type): Description of parameter `targets`.
-            figsize (type): Description of parameter `figsize`.
-            **kwargs (type): Description of parameter `**kwargs`.
-
-        Returns:
-            analyze(self, targets,: Description of returned object.
-
+    def analyze(self, targets, figsize=(5, 5), approx=False, **kwargs):
         """
+        """
+        var_intercepts = [
+            f"Varying Intercept Context {context}" for context in self.df[self.contexts_column].unique()
+        ]
         for target in targets:
 
-            self.__build(target=target)
+            self.__build(
+                target=target
+            )
 
             with self.model:
 
-                traces = pm.sample(**kwargs)
+                if approx:
+                    mean_field = pm.fit(**kwargs)
+                    traces = mean_field.sample(1000)
+                else:
+                    traces = pm.sample(
+                        **kwargs
+                    )
                 setattr(self, target.replace(" ", "_"), traces)
 
                 print(target)
 
-                summary_time = pm.summary(
-                    traces, var_names=["Varying Intercept Time"]
+                summary_context_time = pm.summary(
+                        traces,
+                        var_names=var_intercepts
                 )
-                summary_context = pm.summary(
-                    traces, var_names=["Varying Intercept Context"]
+                summary_model = pm.summary(
+                    traces,
+                    var_names=["Model Slope", "Nu", "Sigma"]
                 )
-                summary_folds = pm.summary(
-                    traces, var_names=["Varying Intercept Fold"]
-                )
-                summary_model = pm.summary(traces, var_names=["Model Slope"])
 
                 ax_1 = pm.traceplot(
                     traces,
-                    var_names=[
-                        "Model Slope",
-                        "Varying Intercept Time",
-                        "Varying Intercept Context",
-                        "Varying Intercept Fold",
-                    ],
-                    figsize=figsize,
+                    var_names=["Nu", "Sigma"],
+                    figsize=figsize
                 )
-                ax_2 = pm.plot_forest(
+                plt.savefig(f"results\\figures\\models_performance\\bayes\\{target}_marginals_3.png", dpi=300)
+                ax_2 = pm.traceplot(
                     traces,
-                    var_names=[
-                        "Varying Intercept Time",
-                        "Varying Intercept Context",
-                        "Varying Intercept Fold",
-                    ],
-                    combined=True,
-                    ridgeplot_quantiles=[0.05, 0.25, 0.5, 0.75, 0.95],
-                    figsize=figsize,
+                    var_names=var_intercepts,
+                    figsize=figsize
                 )
                 ax_3 = pm.plot_forest(
                     traces,
                     var_names=["Model Slope"],
                     combined=True,
-                    ridgeplot_quantiles=[0.05, 0.25, 0.5, 0.75, 0.95],
-                    figsize=figsize,
+                    ridgeplot_quantiles=[0.05, .25, .5, .75, 0.95],
+                    figsize=figsize
                 )
+                plt.savefig(f"results\\figures\\models_performance\\bayes\\{target}_models_3.png", dpi=300)
 
-            display(summary_context)
-            display(summary_time)
-            display(summary_folds)
+                fig, axs = plt.subplots(2, 3, figsize=(15, 5))
+                for var_intercept, ax in zip(var_intercepts, axs.flatten()):
+
+                    ax.plot(
+                        np.arange(2, traces[var_intercept].shape[1] + 2),
+                        traces[var_intercept].mean(0)
+                    )
+                    ax.fill_between(
+                        np.arange(2, traces[var_intercept].shape[1] + 2),
+                        np.percentile(traces[var_intercept], 2.5, axis=0),
+                        np.percentile(traces[var_intercept], 97.5, axis=0),
+                        alpha=0.25
+                    )
+                    ax.set_title(var_intercept)
+
+                plt.tight_layout()
+                plt.savefig(f"results\\figures\\models_performance\\bayes\\{target}_interc_3.png", dpi=300)
+
+            display(summary_context_time)
             display(summary_model)
             plt.show()
 

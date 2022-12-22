@@ -48,14 +48,14 @@ class _AbstractHyperEstimator(HyperModel):
                 min_value=8,
                 max_value=max_dim,
                 step=8,
-                name="embedding_{}_output".format(tag),
+                name=f"embedding_{tag}_output",
             ),
             input_length=None,
-            name="embedding_layer_{}".format(tag),
+            name=f"embedding_layer_{tag}",
         )(input_tensor)
 
         embedding = SpatialDropout1D(
-            self.dropout_rate, name="sp_dropout_{}".format(tag)
+            self.dropout_rate, name=f"sp_dropout_{tag}"
         )(embedding)
 
         return embedding

@@ -182,40 +182,13 @@ def visualize_full_panel(
 
     return None
 
-
 def visualize_temporal_panel(
-    temporal_color,
-    temporal_contexts,
-    context_remap,
-    color_name,
-    cmapper,
-    snapshots=[1, 2, 3],
-    reduction_type="umap",
-    figsize=(9, 6),
-    save_path="results\\figures\\embeddings\\temporal_panel",
-    binning_method=None,
-    visual_verbose=True,
-    **kwargs,
-):
-    """Short summary.
-
-    Args:
-        temporal_color (type): Description of parameter `temporal_color`.
-        temporal_contexts (type): Description of parameter `temporal_contexts`.
-        context_remap (type): Description of parameter `context_remap`.
-        color_name (type): Description of parameter `color_name`.
-        cmapper (type): Description of parameter `cmapper`.
-        snapshots (type): Description of parameter `snapshots`.
-        reduction_type (type): Description of parameter `reduction_type`.
-        figsize (type): Description of parameter `figsize`.
-        save_path (type): Description of parameter `save_path`.
-        binning_method (type): Description of parameter `binning_method`.
-        visual_verbose (type): Description of parameter `visual_verbose`.
-        **kwargs (type): Description of parameter `**kwargs`.
-
-    Returns:
-        type: Description of returned object.
-
+        temporal_colors, temporal_contexts, context_remap, color_name, cmapper,
+        model_name, model_remap, snapshots=[0, 1, 2, 3], reduction_type='umap',
+        subsample_ratio=1., figsize=(12, 6), binning_method=None,
+        visual_verbose=False,
+        save_path='results\\figures\\embeddings\\temporal_panel', **kwargs):
+    """
     """
     fig = plt.figure(figsize=figsize, constrained_layout=True)
     spec = fig.add_gridspec(ncols=len(snapshots), nrows=2)
@@ -223,43 +196,55 @@ def visualize_temporal_panel(
     for column, snapshot in enumerate(snapshots):
 
         reduction = np.load(
-            f"results\\saved_dim_reduction\\2D\\{reduction_type}_melchior_eng_emb_{snapshot}.npy"
+            f'results\\saved_dim_reduction\\{model_name}\\2D\\{reduction_type}{snapshot}.npy'
         )
         reduction = reduction[~np.isnan(reduction).any(axis=1)]
+        if subsample_ratio < 1.:
+            subsample_index = np.random.choice(
+                [i for i in range(reduction.shape[0])],
+                int(reduction.shape[0] * subsample_ratio),
+                replace=False
+            )
+            reduction = reduction[subsample_index, :]
+            temporal_context = temporal_contexts[snapshot][subsample_index]
+            temporal_color = temporal_colors[snapshot][subsample_index]
+        else:
+            temporal_context = temporal_contexts[snapshot]
+            temporal_color = temporal_colors[snapshot]
 
         # Plot context values
         ax_context = fig.add_subplot(spec[0, column])
-        for unique_context in np.unique(temporal_contexts[snapshot]):
+        for unique_context in np.unique(temporal_context):
 
             label = context_remap[int(unique_context)]
             context_index = np.argwhere(
-                temporal_contexts[snapshot] == unique_context
+                temporal_context == unique_context
             ).flatten()
             c = cmapper(int(unique_context))
             ax_context.scatter(
                 reduction[:, 0][context_index],
                 reduction[:, 1][context_index],
-                marker="o",
-                edgecolor="",
+                marker='o',
+                edgecolor='',
                 color=c,
-                label="Object {}".format(label),
-                **kwargs,
+                label=f'Object {label}',
+                **kwargs
             )
         if column == 0:
-            ax_context.set_xlabel("")
-            ax_context.set_ylabel("")
+            ax_context.set_xlabel('')
+            ax_context.set_ylabel('')
         else:
-            ax_context.set_xlabel("")
+            ax_context.set_xlabel('')
             ax_context.set_yticks([])
-        ax_context.set_title(f"Game Context - $t$ {snapshot+1}")
+        ax_context.set_title(f'Game Context - $t$ {snapshot+1}')
 
         # Plot the metric values
 
         colors = group_wise_binning(
-            array=temporal_color[snapshot],
-            grouper=temporal_contexts[snapshot],
+            array=temporal_color,
+            grouper=temporal_context,
             n_bins=100,
-            method=binning_method,
+            method=binning_method
         )
 
         ax_snapshot = fig.add_subplot(spec[1, column])
@@ -267,24 +252,25 @@ def visualize_temporal_panel(
             reduction[:, 0],
             reduction[:, 1],
             c=colors,
-            marker="o",
-            edgecolor="",
-            vmin=0,
-            vmax=100,
-            cmap="coolwarm",
-            **kwargs,
+            marker='o',
+            edgecolor='',
+            # vmin=0,
+            # vmax=100,
+            cmap='coolwarm',
+            **kwargs
         )
-        ax_snapshot.set_title(f"{color_name} - $t$ {snapshot+1}")
+        ax_snapshot.set_title(f'{color_name} - $t$ {snapshot+1}')
         if column == 0:
-            ax_snapshot.set_xlabel("")
-            ax_snapshot.set_ylabel("")
+            ax_snapshot.set_xlabel('')
+            ax_snapshot.set_ylabel('')
         else:
-            ax_snapshot.set_xlabel("")
+            ax_snapshot.set_xlabel('')
             ax_snapshot.set_yticks([])
 
-    fig.text(0.5, -0.01, "Dimension 1", ha="center")
-    fig.text(-0.01, 0.5, "Dimension 2", va="center", rotation="vertical")
-    plt.tight_layout()
+    fig.text(0.5, -0.01, 'Dimension 1', ha='center')
+    fig.text(-0.01, 0.5, 'Dimension 2', va='center', rotation='vertical')
+    plt.suptitle(f"Representation Model {model_remap[model_name]}")
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     handles, labels = ax_context.get_legend_handles_labels()
     leg = ax_context.legend(
@@ -292,22 +278,26 @@ def visualize_temporal_panel(
         labels,
         markerscale=15,
         ncol=1,
-        loc="center left",
-        bbox_to_anchor=(1, 0.5),
+        loc='center left',
+        bbox_to_anchor=(1, 0.5)
     )
-    leg.get_frame().set_edgecolor("k")
+    leg.get_frame().set_edgecolor('k')
 
     cbaxes = fig.add_axes([1.0, 0.06, 0.02, 0.40])
     cbar = fig.colorbar(
         img,
         cax=cbaxes,
-        cmap="coolwarm",
+        cmap='coolwarm',
         boundaries=np.linspace(0, 100, 100),
-        ticks=[0, 25, 50, 75, 100],
+        ticks=[0, 25, 50, 75, 100]
     )
-    cbar.set_label("Discretized Metric Value")
+    cbar.set_label('Discretized Metric Value')
 
-    plt.savefig(f"{save_path}\\{color_name}.png", dpi=500, bbox_inches="tight")
+    plt.savefig(
+        f'{save_path}\\{model_name}_{color_name}.png',
+        dpi=300,
+        bbox_inches='tight'
+    )
     if visual_verbose:
         plt.show()
 

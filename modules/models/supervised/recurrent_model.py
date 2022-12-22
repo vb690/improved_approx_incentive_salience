@@ -54,14 +54,14 @@ class RecurrentModel(_AbstractHyperEstimator):
 
         """
         chosen_optimizer = hp.Choice(
-            name="{}_optimizer".format(self.model_tag),
+            name=f"{self.model_tag}_optimizer",
             values=["rmsprop", "adam"],
         )
         self.dropout_rate = hp.Float(
             min_value=0.0,
             max_value=0.4,
             step=0.05,
-            name="{}_dropout_rate".format(self.model_tag),
+            name=f"{self.model_tag}_dropout_rate",
         )
         self.dropout_spatial = True
 
